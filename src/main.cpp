@@ -26,6 +26,9 @@ RemoteDebug Debug;
 SpaInterface si;
 Config config;
 
+#define ADDRESS_BUF_SIZE 256
+char serverAddress[ADDRESS_BUF_SIZE];
+
 #if defined(LED_PIN)
   Blinker led(LED_PIN);
 #endif
@@ -646,8 +649,12 @@ void loop() {
             debugW("MQTT not connected, attempting connection to %s:%s", config.MqttServer.getValue().c_str(), config.MqttPort.getValue().c_str());
             mqttLastConnect = now;
 
-            String server = config.MqttServer.getValue(); // Must create a local varible to store value otherwise the ptr goes out of scope
-            mqttClient.setServer(server.c_str(), config.MqttPort.getValue().toInt());
+            server = config.MqttServer.getValue(); // Must create a local varible to store value otherwise the ptr goes out of scope
+            if (server.length() < ADDRESS_BUF_SIZE)
+              strncpy(serverAddress, server.c_str(), server.length());
+            else
+              debugE("config.MqttServer of size %u is too long for buffer of size %u", server.length(), ADDRESS_BUF_SIZE);
+            mqttClient.setServer(serverAddress, config.MqttPort.getValue().toInt());
 
             if (mqttClient.connect("sn_esp32", config.MqttUsername.getValue().c_str(), config.MqttPassword.getValue().c_str(), mqttAvailability.c_str(),2,true,"offline")) {
               debugI("MQTT connected");
