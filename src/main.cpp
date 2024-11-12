@@ -649,7 +649,7 @@ void loop() {
             debugW("MQTT not connected, attempting connection to %s:%s", config.MqttServer.getValue().c_str(), config.MqttPort.getValue().c_str());
             mqttLastConnect = now;
 
-            server = config.MqttServer.getValue(); // Must create a local varible to store value otherwise the ptr goes out of scope
+            String server = config.MqttServer.getValue(); // Must create a local varible to store value otherwise the ptr goes out of scope
             if (server.length() < ADDRESS_BUF_SIZE)
               strncpy(serverAddress, server.c_str(), server.length());
             else
