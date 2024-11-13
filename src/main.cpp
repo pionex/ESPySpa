@@ -10,6 +10,7 @@
   #include "Blinker.h"
 #endif
 
+#include "MqttManager.h"
 #include "WebUI.h"
 #include "Config.h"
 #include "SpaInterface.h"
@@ -26,15 +27,16 @@ RemoteDebug Debug;
 SpaInterface si;
 Config config;
 
-#define ADDRESS_BUF_SIZE 256
-char serverAddress[ADDRESS_BUF_SIZE];
+//#define ADDRESS_BUF_SIZE 256
+//char serverAddress[ADDRESS_BUF_SIZE];
 
 #if defined(LED_PIN)
   Blinker led(LED_PIN);
 #endif
 
 WiFiClient wifi;
-PubSubClient mqttClient(wifi);
+//PubSubClient mqttClient(wifi);
+MqttManager mqttClient(wifi);
 
 WebUI ui(&si, &config);
 
@@ -649,12 +651,7 @@ void loop() {
             debugW("MQTT not connected, attempting connection to %s:%s", config.MqttServer.getValue().c_str(), config.MqttPort.getValue().c_str());
             mqttLastConnect = now;
 
-            String server = config.MqttServer.getValue(); // Must create a local varible to store value otherwise the ptr goes out of scope
-            if (server.length() < ADDRESS_BUF_SIZE)
-              strncpy(serverAddress, server.c_str(), server.length());
-            else
-              debugE("config.MqttServer of size %u is too long for buffer of size %u", server.length(), ADDRESS_BUF_SIZE);
-            mqttClient.setServer(serverAddress, config.MqttPort.getValue().toInt());
+            mqttClient.setServer(config.MqttServer.getValue(), config.MqttPort.getValue().toInt());
 
             if (mqttClient.connect("sn_esp32", config.MqttUsername.getValue().c_str(), config.MqttPassword.getValue().c_str(), mqttAvailability.c_str(),2,true,"offline")) {
               debugI("MQTT connected");
