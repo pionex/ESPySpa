@@ -15,7 +15,8 @@
 #include "Config.h"
 #include "SpaInterface.h"
 #include "SpaUtils.h"
-#include "HAAutoDiscovery.h"
+//#include "HAAutoDiscovery.h"
+#include "AutoDiscovery.h"
 
 //define stringify function
 #define xstr(a) str(a)
@@ -36,7 +37,7 @@ Config config;
 
 WiFiClient wifi;
 //PubSubClient mqttClient(wifi);
-MqttManager mqttClient(wifi);
+MqttManager mqttClient(wifi, si);
 
 WebUI ui(&si, &config);
 
@@ -134,21 +135,16 @@ void configChangeCallbackInt(const char* name, int value) {
   if (name == "UpdateFrequency") si.setUpdateFrequency(value);
 }
 
-void mqttHaAutoDiscovery() {
+void mqttHaAutoDiscovery() 
+{
   debugI("Publishing Home Assistant auto discovery");
 
-  String output;
-  String discoveryTopic;
+  SpaAutoDiscovery autodiscovery(&mqttClient, config.SpaName.getValue(), spaSerialNumber, mqttStatusTopic, mqttAvailability, mqttSet, "http://" + wifi.localIP().toString());
+  autodiscovery.PublishTopic("Water Temperature", "{{ value_json.temperatures.water }}", "WaterTemperature", SpaAutoDiscovery::DeviceClass::Temperature, "", "measurement", "°C");
+  autodiscovery.PublishTopic("Case Temperature", "{{ value_json.temperatures.case }}", "CaseTemperature", SpaAutoDiscovery::DeviceClass::Temperature, "diagnostic", "measurement", "°C");
+  autodiscovery.PublishTopic("Heater Temperature", "{{ value_json.temperatures.heater }}", "HeaterTemperature", SpaAutoDiscovery::DeviceClass::Temperature, "diagnostic", "measurement", "°C");
 
-  SpaADInformationTemplate spa;
-  spa.spaName = config.SpaName.getValue();
-  spa.spaSerialNumber = spaSerialNumber;
-  spa.stateTopic = mqttStatusTopic;
-  spa.availabilityTopic = mqttAvailability;
-  spa.manufacturer = "sn_esp32";
-  spa.model = xstr(PIOENV);
-  spa.sw_version = xstr(BUILD_INFO);
-  spa.configuration_url = "http://" + wifi.localIP().toString();
+
 
   //sensorADPublish("Water Temperature","","temperature",mqttStatusTopic,"°C","{{ value_json.temperatures.water }}","measurement","WaterTemperature", spaName, spaSerialNumber);
   //sensorADPublish("Heater Temperature","diagnostic","temperature",mqttStatusTopic,"°C","{{ value_json.temperatures.heater }}","measurement","HeaterTemperature", spaName, spaSerialNumber);
@@ -160,8 +156,9 @@ void mqttHaAutoDiscovery() {
   //sensorADPublish("Heatpump Ambient Temperature","","temperature",mqttStatusTopic,"°C","{{ value_json.temperatures.heatpumpAmbient }}","measurement","HPAmbTemp", spaName, spaSerialNumber);
   //sensorADPublish("Heatpump Condensor Temperature","","temperature",mqttStatusTopic,"°C","{{ value_json.temperatures.heatpumpCondensor }}","measurement","HPCondTemp", spaName, spaSerialNumber);
   //sensorADPublish("State","","",mqttStatusTopic,"","{{ value_json.status.state }}","","State", spaName, spaSerialNumber);
-  spa.commandTopic = mqttSet;
-  
+  //spa.commandTopic = mqttSet;
+
+/*  
   AutoDiscoveryInformationTemplate ADConf;
 
   ADConf.displayName = "Water Temperature";
@@ -171,7 +168,10 @@ void mqttHaAutoDiscovery() {
   ADConf.entityCategory = "";
   generateSensorAdJSON(output, ADConf, spa, discoveryTopic, "measurement", "°C");
   mqttClient.publish(discoveryTopic.c_str(), output.c_str(), true);
+*/
 
+
+/*
   ADConf.displayName = "Case Temperature";
   ADConf.valueTemplate = "{{ value_json.temperatures.case }}";
   ADConf.propertyId = "CaseTemperature";
@@ -179,7 +179,9 @@ void mqttHaAutoDiscovery() {
   ADConf.entityCategory = "diagnostic";
   generateSensorAdJSON(output, ADConf, spa, discoveryTopic, "measurement", "°C");
   mqttClient.publish(discoveryTopic.c_str(), output.c_str(), true);
+*/
 
+/*
   ADConf.displayName = "Heater Temperature";
   ADConf.valueTemplate = "{{ value_json.temperatures.heater }}";
   ADConf.propertyId = "HeaterTemperature";
@@ -187,7 +189,9 @@ void mqttHaAutoDiscovery() {
   ADConf.entityCategory = "diagnostic";
   generateSensorAdJSON(output, ADConf, spa, discoveryTopic, "measurement", "°C");
   mqttClient.publish(discoveryTopic.c_str(), output.c_str(), true);
+*/
 
+/* Not done yet
   ADConf.displayName = "Mains Voltage";
   ADConf.valueTemplate = "{{ value_json.power.voltage }}";
   ADConf.propertyId = "MainsVoltage";
@@ -433,117 +437,25 @@ void mqttHaAutoDiscovery() {
   ADConf.entityCategory = "";
   generateSelectAdJSON(output, ADConf, spa, discoveryTopic, si.spaModeStrings);
   mqttClient.publish(discoveryTopic.c_str(), output.c_str(), true);
-
+*/
 }
 
-#pragma region MQTT Publish / Subscribe
-
-void mqttPublishStatusString(String s){
-
-  mqttClient.publish(String(mqttBase+"rfResponse").c_str(),s.c_str());
-
+static void MqttPublishStatusString(String s)
+{
+    mqttClient.publish(String(mqttBase + "rfResponse").c_str(),s.c_str());
 }
 
-void mqttPublishStatus() {
-  String json;
-  if (generateStatusJson(si, json)) {
-    mqttClient.publish(mqttStatusTopic.c_str(),json.c_str());
-  } else {
-    debugD("Error generating json");
-  }
-}
-
-
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  String t = String(topic);
-
-  String p = "";
-  for (uint x = 0; x < length; x++) {
-    p += char(*payload);
-    payload++;
-  }
-
-  debugD("MQTT subscribe received '%s' with payload '%s'",topic,p.c_str());
-
-  String property = t.substring(t.lastIndexOf("/")+1);
-
-  debugI("Received update for %s to %s",property.c_str(),p.c_str());
-
-  if (property == "temperatures_setPoint") {
-    si.setSTMP(int(p.toFloat()*10));
-  } else if (property == "heatpump_mode") {
-    si.setHPMP(p);
-  } else if (property == "pump1") {
-    si.setRB_TP_Pump1(p=="OFF"?0:1);
-  } else if (property == "pump2") {
-    si.setRB_TP_Pump2(p=="OFF"?0:1);
-  } else if (property == "pump3") {
-    si.setRB_TP_Pump3(p=="OFF"?0:1);
-  } else if (property == "pump4") {
-    si.setRB_TP_Pump4(p=="OFF"?0:1);
-  } else if (property == "pump5") {
-    si.setRB_TP_Pump5(p=="OFF"?0:1);
-  } else if (property == "heatpump_auxheat") {
-    si.setHELE(p=="OFF"?0:1);
-  } else if (property == "status_datetime") {
-    tmElements_t tm;
-    tm.Year=CalendarYrToTm(p.substring(0,4).toInt());
-    tm.Month=p.substring(5,7).toInt();
-    tm.Day=p.substring(8,10).toInt();
-    tm.Hour=p.substring(11,13).toInt();
-    tm.Minute=p.substring(14,16).toInt();
-    tm.Second=p.substring(17).toInt();
-    si.setSpaTime(makeTime(tm));
-  } else if (property == "lights_state") {
-    si.setRB_TP_Light(p=="ON"?1:0);
-  } else if (property == "lights_effect") {
-    si.setColorMode(p);
-  } else if (property == "lights_brightness") {
-    si.setLBRTValue(p.toInt());
-  } else if (property == "lights_color") {
-    int pos = p.indexOf(',');
-    if ( pos > 0) {
-      int value = p.substring(0, pos).toInt();
-      si.setCurrClr(si.colorMap[value/15]);
+static void MqttPublishStatus() 
+{
+    String json;
+    if (generateStatusJson(si, json)) {
+        mqttClient.publish(mqttStatusTopic.c_str(),json.c_str());
+    } else {
+        debugD("Error generating json");
     }
-  } else if (property == "lights_speed") {
-    si.setLSPDValue(p);
-  } else if (property == "blower_state") {
-    si.setOutlet_Blower(p=="OFF"?2:0);
-  } else if (property == "blower_speed") {
-    if (p=="0") si.setOutlet_Blower(2);
-    else si.setVARIValue(p.toInt());
-  } else if (property == "blower_mode") {
-    si.setOutlet_Blower(p=="Variable"?0:1);
-  } else if (property == "sleepTimers_1_state" || property == "sleepTimers_2_state") {
-    int member=0;
-    for (const auto& i : si.sleepSelection) {
-      if (i == p) {
-        if (property == "sleepTimers_1_state")
-          si.setL_1SNZ_DAY(si.sleepBitmap[member]);
-        else if (property == "sleepTimers_2_state")
-          si.setL_2SNZ_DAY(si.sleepBitmap[member]);
-        break;
-      }
-      member++;
-    }
-  } else if (property == "sleepTimers_1_begin") {
-    si.setL_1SNZ_BGN(convertToInteger(p));
-  } else if (property == "sleepTimers_1_end") {
-    si.setL_1SNZ_END(convertToInteger(p));
-  } else if (property == "sleepTimers_2_begin") {
-    si.setL_2SNZ_BGN(convertToInteger(p));
-  } else if (property == "sleepTimers_2_end") {
-    si.setL_2SNZ_END(convertToInteger(p));
-  } else if (property == "status_spaMode") {
-    si.setMode(p);
-  } else {
-    debugE("Unhandled property - %s",property.c_str());
-  }
 }
 
 
-#pragma endregion
 
 void setup() {
   #if defined(EN_PIN)
@@ -574,8 +486,7 @@ void setup() {
     //I'm not sure if we need a reboot here - probably not
   }
 
-  mqttClient.setCallback(mqttCallback);  // This is ok in setup as it never changes
-  mqttClient.setBufferSize(2048);        // This is ok in setup as it never changes
+
 
   bootStartMillis = millis();  // Record the current boot time in milliseconds
 
@@ -590,9 +501,9 @@ void setup() {
 
 
 
+
+
 void loop() {  
-
-
 
   checkButton();
   #if defined(LED_PIN)
@@ -653,7 +564,7 @@ void loop() {
 
             mqttClient.setServer(config.MqttServer.getValue(), config.MqttPort.getValue().toInt());
 
-            if (mqttClient.connect("sn_esp32", config.MqttUsername.getValue().c_str(), config.MqttPassword.getValue().c_str(), mqttAvailability.c_str(),2,true,"offline")) {
+            if (mqttClient.connect("sn_esp32", config.MqttUsername.getValue(), config.MqttPassword.getValue(), mqttAvailability, 2, true, "offline")) {
               debugI("MQTT connected");
     
               String subTopic = mqttBase+"set/#";
@@ -672,10 +583,8 @@ void loop() {
             debugI("Publish autodiscovery information");
             mqttHaAutoDiscovery();
             autoDiscoveryPublished = true;
-            si.setUpdateCallback(mqttPublishStatus);
-            mqttPublishStatus();
-
-            si.statusResponse.setCallback(mqttPublishStatusString);
+            si.setUpdateCallback(MqttPublishStatus);
+            si.statusResponse.setCallback(MqttPublishStatusString);
 
           }
           #if defined(LED_PIN)
